@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HelioSite Explorer</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+
+    <style>
+        :root{
+            --bg:#0f1113;
+            --panel:rgba(18,21,24,.92);
+            --panel-soft:rgba(255,255,255,.045);
+            --panel-border:rgba(255,255,255,.09);
+            --text:#f6f7f8;
+            --muted:#9ca3aa;
+            --accent:#ff9b73;
+            --accent-2:#ffc56a;
+            --green:#56c271;
+            --orange:#ffb15c;
+            --red:#ff6666;
+            --shadow:0 22px 60px rgba(0,0,0,.42);
+        }
+
+        *{ box-sizing:border-box; }
+
+        html,body{
+            margin:0;
+            width:100%;
+            height:100%;
+            overflow:hidden;
+            font-family:'Inter',sans-serif;
+            background:var(--bg);
+            color:var(--text);
+        }
+
+        #map{
+            position:absolute;
+            inset:0;
+            z-index:1;
+        }
+
+        /* subtle vignette peste hartă */
+        body::after{
+            content:"";
+            position:fixed;
+            inset:0;
+            pointer-events:none;
+            z-index:5;
+            background:
+                    linear-gradient(90deg, rgba(8,10,12,.17), transparent 28%),
+                    radial-gradient(circle at 50% 0%, rgba(255,255,255,.03), transparent 38%);
+        }
+
+        /* =====================================================
+           BRAND / DASHBOARD
+           ===================================================== */
+
+        #sidebar{
+            position:absolute;
+            left:18px;
+            top:18px;
+            width:392px;
+            z-index:1000;
+
+            background:linear-gradient(
+                    180deg,
+                    rgba(22,25,28,.96),
+                    rgba(15,17,19,.94)
+            );
+
+            border:1px solid rgba(255,255,255,.10);
+            border-radius:24px;
+            box-shadow:var(--shadow);
+            backdrop-filter:blur(18px);
+
+            padding:18px;
+            max-height:calc(100vh - 36px);
+            overflow:auto;
+        }
+
+        #sidebar::-webkit-scrollbar{ width:6px; }
+        #sidebar::-webkit-scrollbar-thumb{
+            background:rgba(255,255,255,.12);
+            border-radius:999px;
+        }
+
+        .brand-row{
+            display:flex;
+            align-items:center;
+            gap:12px;
+            margin-bottom:14px;
+        }
+
+        .brand-mark{
+            width:46px;
+            height:46px;
+            flex:0 0 46px;
+            border-radius:15px;
+            display:grid;
+            place-items:center;
+
+            background:linear-gradient(135deg,var(--accent-2),var(--accent));
+            color:#1b1b1b;
+            font-size:22px;
+            font-weight:800;
+
+            box-shadow:
+                    0 9px 24px rgba(255,155,115,.26),
+                    inset 0 1px 0 rgba(255,255,255,.45);
+        }
+
+        .brand-copy{
+            min-width:0;
+            flex:1;
+        }
+
+        #sidebar h1{
+            margin:0;
+            font-size:23px;
+            line-height:1.05;
+            letter-spacing:-.5px;
+            font-weight:800;
+            color:#fff;
+        }
+
+        .brand-accent{
+            background:linear-gradient(90deg,var(--accent-2),var(--accent));
+            -webkit-background-clip:text;
+            -webkit-text-fill-color:transparent;
+        }
+
+        #sidebar .subtitle{
+            margin:5px 0 0;
+            font-size:12px;
+            line-height:1.45;
+            color:var(--muted);
+        }
+
+        .divider{
+            height:1px;
+            background:linear-gradient(
+                    90deg,
+                    transparent,
+                    rgba(255,255,255,.12),
+                    transparent
+            );
+            margin:2px 0 13px;
+        }
+
+        /* =====================================================
+           STATUS
+           ===================================================== */
+
+        .status-msg{
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            min-height:44px;
+
+            padding:10px 13px;
+            margin-bottom:12px;
+
+            border-radius:14px;
+            border:1px solid rgba(255,155,115,.28);
+            background:rgba(255,155,115,.075);
+
+            color:#ffad8c;
+            font-size:12px;
+            font-weight:700;
+            text-align:center;
+        }
+
+        /* =====================================================
+           STATISTICI
+           ===================================================== */
+
+        .stats-grid{
+            display:none;
+            grid-template-columns:1fr 1fr;
+            gap:9px;
+        }
+
+        .stat-box{
+            min-height:79px;
+            padding:12px 13px;
+
+            border-radius:15px;
+            border:1px solid var(--panel-border);
+            background:var(--panel-soft);
+
+            transition:
+                    transform .18s ease,
+                    border-color .18s ease,
+                    background .18s ease;
+        }
+
+        .stat-box:hover{
+            transform:translateY(-1px);
+            border-color:rgba(255,255,255,.14);
+            background:rgba(255,255,255,.06);
+        }
+
+        .stat-label{
+            display:block;
+            margin-bottom:7px;
+
+            font-size:9px;
+            line-height:1;
+            font-weight:800;
+            letter-spacing:.65px;
+            color:#7f878e;
+            text-transform:uppercase;
+        }
+
+        .stat-value{
+            display:block;
+            font-size:18px;
+            line-height:1.15;
+            font-weight:800;
+            letter-spacing:-.25px;
+            color:#fff;
+        }
+
+        .stat-value.secondary{
+            color:#ffab89;
+            font-size:17px;
+        }
+
+        .stat-box.primary-green .stat-value{
+            color:var(--green);
+        }
+
+        .stat-box.constraint-box,
+        .stat-box.highlight{
+            grid-column:1 / -1;
+            min-height:auto;
+        }
+
+        .stat-box.constraint-box{
+            margin-top:2px;
+            padding:13px 14px;
+            background:rgba(255,95,95,.055);
+            border-color:rgba(255,95,95,.21);
+        }
+
+        .stat-box.constraint-box .stat-value{
+            font-size:12.5px !important;
+            line-height:1.55;
+            font-weight:700;
+            color:#ff6d6d !important;
+        }
+
+        .stat-box.highlight{
+            padding:14px 15px;
+            background:
+                    linear-gradient(
+                            135deg,
+                            rgba(255,197,106,.08),
+                            rgba(255,155,115,.08)
+                    );
+            border-color:rgba(255,155,115,.46);
+        }
+
+        .stat-box.highlight .stat-label{
+            margin-bottom:6px;
+        }
+
+        .stat-box.highlight .stat-value{
+            font-size:14px !important;
+            line-height:1.45;
+        }
+
+        /* =====================================================
+           TOOLBAR - complet redesenat
+           ===================================================== */
+
+        .leaflet-top.leaflet-left{
+            top:18px !important;
+            left:430px !important;
+            margin:0 !important;
+            z-index:1100 !important;
+        }
+
+        .leaflet-control-zoom{
+            display:none !important;
+        }
+
+        .leaflet-draw.leaflet-control{
+            display:flex !important;
+            align-items:center !important;
+            gap:6px !important;
+
+            padding:7px !important;
+            margin:0 !important;
+
+            border:1px solid rgba(255,255,255,.12) !important;
+            border-radius:18px !important;
+
+            background:rgba(17,19,22,.95) !important;
+            backdrop-filter:blur(18px);
+
+            box-shadow:
+                    0 16px 38px rgba(0,0,0,.36),
+                    inset 0 1px 0 rgba(255,255,255,.035) !important;
+        }
+
+        .leaflet-draw-section,
+        .leaflet-draw-toolbar,
+        .leaflet-bar{
+            display:flex !important;
+            flex-direction:row !important;
+            align-items:center !important;
+            gap:6px !important;
+
+            margin:0 !important;
+            padding:0 !important;
+            border:0 !important;
+
+            background:transparent !important;
+            box-shadow:none !important;
+        }
+
+        /* reset icon sprite Leaflet Draw */
+        .leaflet-draw-toolbar a,
+        .leaflet-bar a{
+            background-image:none !important;
+        }
+
+        .leaflet-draw-toolbar a{
+            position:relative !important;
+
+            width:auto !important;
+            min-width:46px !important;
+            height:46px !important;
+
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+            gap:8px !important;
+
+            padding:0 13px !important;
+
+            border:1px solid rgba(255,255,255,.10) !important;
+            border-radius:12px !important;
+
+            text-indent:0 !important;
+            text-decoration:none !important;
+            overflow:hidden !important;
+
+            font-family:'Inter',sans-serif !important;
+
+            transition:
+                    transform .17s ease,
+                    filter .17s ease,
+                    box-shadow .17s ease !important;
+        }
+
+        .leaflet-draw-toolbar a:hover{
+            transform:translateY(-2px) !important;
+            filter:brightness(1.05);
+        }
+
+        .leaflet-draw-toolbar a:active{
+            transform:translateY(0) scale(.98) !important;
+        }
+
+        .leaflet-draw-toolbar a span{
+            display:none !important;
+        }
+
+        /* DESENEAZĂ */
+        .leaflet-draw-toolbar a.leaflet-draw-draw-polygon{
+            min-width:128px !important;
+            background:
+                    linear-gradient(135deg,#ffc864,#ff9d74) !important;
+
+            color:#202020 !important;
+
+            box-shadow:
+                    0 8px 20px rgba(255,157,116,.22),
+                    inset 0 1px 0 rgba(255,255,255,.35) !important;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-draw-polygon::before{
+            content:"◇";
+            font-size:22px;
+            line-height:1;
+            font-weight:900;
+            color:#202020;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-draw-polygon::after{
+            content:"Desenează";
+            font-size:12px;
+            font-weight:800;
+            color:#202020;
+            letter-spacing:-.1px;
+        }
+
+        /* EDITEAZĂ */
+        .leaflet-draw-toolbar a.leaflet-draw-edit-edit{
+            min-width:112px !important;
+            background:rgba(255,255,255,.055) !important;
+            color:#f5f5f5 !important;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-edit-edit::before{
+            content:"✎";
+            font-size:20px;
+            line-height:1;
+            font-weight:800;
+            color:#ffb889;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-edit-edit::after{
+            content:"Editează";
+            font-size:12px;
+            font-weight:750;
+            color:#f4f4f4;
+        }
+
+        /* ȘTERGE */
+        .leaflet-draw-toolbar a.leaflet-draw-edit-remove{
+            min-width:105px !important;
+            background:rgba(255,92,92,.085) !important;
+            border-color:rgba(255,92,92,.20) !important;
+            color:#ff7676 !important;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-edit-remove::before{
+            content:"×";
+            font-size:27px;
+            line-height:.8;
+            font-weight:500;
+            color:#ff7676;
+            margin-top:-2px;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-edit-remove::after{
+            content:"Șterge";
+            font-size:12px;
+            font-weight:750;
+            color:#ff8787;
+        }
+
+        /* disabled */
+        .leaflet-draw-toolbar a.leaflet-disabled{
+            opacity:.35 !important;
+            filter:saturate(.5) !important;
+            cursor:default !important;
+            transform:none !important;
+        }
+
+        /* Leaflet Draw Save/Cancel */
+        .leaflet-draw-actions{
+            position:absolute !important;
+            top:56px !important;
+            left:0 !important;
+
+            display:flex !important;
+            gap:6px !important;
+
+            padding:6px !important;
+
+            border:1px solid rgba(255,255,255,.10) !important;
+            border-radius:12px !important;
+            background:rgba(17,19,22,.97) !important;
+
+            box-shadow:0 12px 30px rgba(0,0,0,.34) !important;
+            backdrop-filter:blur(14px);
+        }
+
+        .leaflet-draw-actions a{
+            height:31px !important;
+            padding:0 11px !important;
+
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+
+            border:0 !important;
+            border-radius:8px !important;
+
+            background:rgba(255,255,255,.07) !important;
+            color:#f1f1f1 !important;
+
+            font-family:'Inter',sans-serif !important;
+            font-size:11px !important;
+            font-weight:700 !important;
+            text-indent:0 !important;
+        }
+
+        .leaflet-draw-actions a:hover{
+            background:rgba(255,155,115,.16) !important;
+            color:#ffb08f !important;
+        }
+
+        /* =====================================================
+           RESPONSIVE
+           ===================================================== */
+
+        @media (max-width: 920px){
+            #sidebar{
+                width:345px;
+            }
+
+            .leaflet-top.leaflet-left{
+                left:380px !important;
+            }
+
+            .leaflet-draw-toolbar a{
+                min-width:46px !important;
+                width:46px !important;
+                padding:0 !important;
+            }
+
+            .leaflet-draw-toolbar a::after{
+                display:none !important;
+            }
+        }
+
+        @media (max-width: 760px){
+            #sidebar{
+                left:10px;
+                top:10px;
+                width:calc(100% - 20px);
+                max-height:50vh;
+                border-radius:20px;
+            }
+
+            .leaflet-top.leaflet-left{
+                left:50% !important;
+                top:auto !important;
+                bottom:14px !important;
+                transform:translateX(-50%) !important;
+            }
+
+            .leaflet-draw.leaflet-control{
+                border-radius:16px !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="sidebar">
+    <div class="brand-row">
+        <div class="brand-mark">H</div>
+
+        <div class="brand-copy">
+            <h1>HelioSite <span class="brand-accent">Explorer</span></h1>
+            <p class="subtitle">Analiză geospațială pentru amplasarea parcurilor fotovoltaice</p>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div id="status-msg" class="status-msg">
+        Desenează o parcelă pentru a începe analiza.
+    </div>
+
+    <div id="stats-container" class="stats-grid">
+
+        <div class="stat-box">
+            <span class="stat-label">Suprafață totală</span>
+            <span class="stat-value" id="val-total">0.00 ha</span>
+        </div>
+
+        <div class="stat-box primary-green">
+            <span class="stat-label">Teren fezabil</span>
+            <span class="stat-value" id="val-suitable">0.00 ha</span>
+        </div>
+
+        <div class="stat-box">
+            <span class="stat-label">Grad utilizare</span>
+            <span class="stat-value" id="val-usability">0.00%</span>
+        </div>
+
+        <div class="stat-box">
+            <span class="stat-label">Scor MCDA mediu</span>
+            <span class="stat-value" id="val-score">0.0</span>
+        </div>
+
+        <div class="stat-box">
+            <span class="stat-label">Înclinație medie</span>
+            <span class="stat-value secondary" id="val-slope">0.0°</span>
+        </div>
+
+        <div class="stat-box">
+            <span class="stat-label">Orientare medie</span>
+            <span class="stat-value secondary" id="val-aspect">0.0°</span>
+        </div>
+
+        <div class="stat-box">
+            <span class="stat-label">Distanță rețea</span>
+            <span class="stat-value secondary" id="val-grid">0 m</span>
+        </div>
+
+        <div class="stat-box">
+            <span class="stat-label">Iradiere</span>
+            <span class="stat-value secondary" id="val-irradiance">0 kWh</span>
+        </div>
+
+        <div class="stat-box constraint-box">
+            <span class="stat-label">Constrângeri / observații</span>
+            <span class="stat-value" id="val-constraints">Fără constrângeri detectate.</span>
+        </div>
+
+        <div class="stat-box highlight">
+            <span class="stat-label">Evaluare finală</span>
+            <span class="stat-value" id="val-verdict">Aștept date...</span>
+        </div>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+<script>
+    const map = L.map('map', {
+        doubleClickZoom: true,
+        zoomControl: false
+    }).setView([46.7712, 23.6236], 12);
+
+    L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }
+    ).addTo(map);
+
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    const suitableLayerGroup = new L.FeatureGroup();
+    map.addLayer(suitableLayerGroup);
+
+    const drawControl = new L.Control.Draw({
+        position: 'topleft',
+
+        draw: {
+            polygon: {
+                allowIntersection: false,
+                showArea: true,
+
+                shapeOptions: {
+                    color: '#ff9b73',
+                    weight: 2,
+                    opacity: 1,
+                    fillColor: '#ff9b73',
+                    fillOpacity: 0.09
+                }
+            },
+
+            polyline: false,
+            circle: false,
+            rectangle: false,
+            marker: false,
+            circlemarker: false
+        },
+
+        edit: {
+            featureGroup: drawnItems,
+            edit: true,
+            remove: true
+        }
+    });
+
+    map.addControl(drawControl);
+
+
+    function setLoadingState() {
+        const statusMsg = document.getElementById('status-msg');
+
+        statusMsg.style.display = 'flex';
+        statusMsg.style.background = 'rgba(255, 193, 7, 0.08)';
+        statusMsg.style.borderColor = 'rgba(255, 193, 7, 0.28)';
+        statusMsg.style.color = '#ffca62';
+        statusMsg.innerText = 'Se procesează parcela...';
+
+        document.getElementById('stats-container').style.display = 'none';
+    }
+
+
+    function setErrorState(message) {
+        const statusMsg = document.getElementById('status-msg');
+
+        statusMsg.style.display = 'flex';
+        statusMsg.style.background = 'rgba(244, 67, 54, 0.08)';
+        statusMsg.style.borderColor = 'rgba(244, 67, 54, 0.28)';
+        statusMsg.style.color = '#ff6e6e';
+        statusMsg.innerText = 'Eroare: ' + message;
+
+        document.getElementById('stats-container').style.display = 'none';
+    }
+
+
+    function valueOrDash(value) {
+        return (
+            value !== undefined &&
+            value !== null &&
+            Number.isFinite(Number(value))
+        ) ? value : '--';
+    }
+
+
+    function fallbackVerdict(feasiblePct) {
+
+        if (feasiblePct <= 0.005) {
+            return {
+                text:
+                    'Teren nefezabil pentru parc solar. ' +
+                    'Fezabilitate: 0.00%.',
+                level: 'bad'
+            };
+        }
+
+        if (feasiblePct < 60.0) {
+            return {
+                text:
+                    'Teren cu fezabilitate redusă — ' +
+                    feasiblePct.toFixed(2) +
+                    '% din parcelă este fezabilă.',
+                level: 'bad'
+            };
+        }
+
+        if (feasiblePct < 80.0) {
+            return {
+                text:
+                    'Teren parțial fezabil — ' +
+                    feasiblePct.toFixed(2) +
+                    '% din parcelă este fezabilă.',
+                level: 'warning'
+            };
+        }
+
+        return {
+            text:
+                'Teren favorabil pentru parc solar — ' +
+                feasiblePct.toFixed(2) +
+                '% din parcelă este fezabilă.',
+            level: 'good'
+        };
+    }
+
+
+    function renderAnalysis(data) {
+
+        if (
+            !data ||
+            data.status !== 'success' ||
+            !data.details
+        ) {
+            setErrorState(
+                data && data.message
+                    ? data.message
+                    : 'Răspuns invalid primit de la server.'
+            );
+            return;
+        }
+
+        const details = data.details;
+
+        document.getElementById('status-msg').style.display =
+            'none';
+
+        document.getElementById('stats-container').style.display =
+            'grid';
+
+        const feasiblePct = Number(
+            details.feasible_percentage ??
+            details.usability ??
+            0
+        );
+
+        const totalArea = Number(
+            details.total_area ?? 0
+        );
+
+        const suitableArea = Number(
+            details.suitable_area ?? 0
+        );
+
+        document.getElementById('val-total').innerText =
+            totalArea.toFixed(2) + ' ha';
+
+        document.getElementById('val-suitable').innerText =
+            suitableArea.toFixed(2) + ' ha';
+
+        document.getElementById('val-usability').innerText =
+            feasiblePct.toFixed(2) + '%';
+
+        document.getElementById('val-score').innerText =
+            (
+                details.avg_score !== undefined &&
+                details.avg_score !== null
+            )
+                ? Number(details.avg_score).toFixed(1)
+                : '--';
+
+
+        const slope = valueOrDash(
+            details.inclinatie_grade
+        );
+
+        const aspect = valueOrDash(
+            details.orientare_grade
+        );
+
+        const gridDist = valueOrDash(
+            details.distanta_retea_m
+        );
+
+        const irradiance = valueOrDash(
+            details.iradiere_kwh
+        );
+
+        document.getElementById('val-slope').innerText =
+            slope === '--'
+                ? '--'
+                : Number(slope).toFixed(1) + '°';
+
+        document.getElementById('val-aspect').innerText =
+            aspect === '--'
+                ? '--'
+                : Number(aspect).toFixed(1) + '°';
+
+        document.getElementById('val-grid').innerText =
+            gridDist === '--'
+                ? '--'
+                : Math.round(Number(gridDist)) + ' m';
+
+        document.getElementById('val-irradiance').innerText =
+            irradiance === '--'
+                ? '--'
+                : Math.round(Number(irradiance)) + ' kWh';
+
+
+        const constraintsList =
+            (
+                Array.isArray(details.constraints) &&
+                details.constraints.length > 0
+            )
+                ? details.constraints.join(' ')
+                : 'Fără constrângeri detectate.';
+
+        document.getElementById(
+            'val-constraints'
+        ).innerText = constraintsList;
+
+
+        const fallback =
+            fallbackVerdict(feasiblePct);
+
+        const verdictText =
+            details.final_evaluation ??
+            fallback.text;
+
+        const verdictLevel =
+            details.final_evaluation_level ??
+            fallback.level;
+
+        const verdictBox =
+            document.getElementById('val-verdict');
+
+        verdictBox.innerText =
+            verdictText;
+
+        if (verdictLevel === 'good') {
+
+            verdictBox.style.color =
+                '#56c271';
+
+        } else if (
+            verdictLevel === 'warning'
+        ) {
+
+            verdictBox.style.color =
+                '#ffb15c';
+
+        } else {
+
+            verdictBox.style.color =
+                '#ff6666';
+        }
+
+
+        suitableLayerGroup.clearLayers();
+
+        if (details.suitable_geojson) {
+
+            L.geoJSON(
+                details.suitable_geojson,
+                {
+                    style: {
+                        color: '#56c271',
+                        weight: 1,
+                        fillColor: '#56c271',
+                        fillOpacity: 0.58
+                    },
+
+                    interactive: false
+                }
+            ).addTo(
+                suitableLayerGroup
+            );
+        }
+    }
+
+
+    function analyzePolygon(coordinates) {
+
+        setLoadingState();
+
+        fetch(
+            'http://localhost:5000/analyze-polygon',
+            {
+                method: 'POST',
+
+                headers: {
+                    'Content-Type':
+                        'application/json'
+                },
+
+                body: JSON.stringify({
+                    polygon: coordinates
+                })
+            }
+        )
+            .then(
+                async response => {
+
+                    let data;
+
+                    try {
+                        data =
+                            await response.json();
+
+                    } catch (e) {
+
+                        throw new Error(
+                            'Serverul nu a returnat ' +
+                            'un răspuns JSON valid.'
+                        );
+                    }
+
+                    if (!response.ok) {
+
+                        throw new Error(
+                            data.message ||
+                            (
+                                'Eroare HTTP ' +
+                                response.status
+                            )
+                        );
+                    }
+
+                    return data;
+                }
+            )
+            .then(
+                renderAnalysis
+            )
+            .catch(
+                error => {
+
+                    console.error(
+                        error
+                    );
+
+                    suitableLayerGroup.clearLayers();
+
+                    setErrorState(
+                        error.message ||
+                        'Eroare de server.'
+                    );
+                }
+            );
+    }
+
+
+    map.on(
+        L.Draw.Event.CREATED,
+        function(event) {
+
+            drawnItems.clearLayers();
+            suitableLayerGroup.clearLayers();
+
+            const layer =
+                event.layer;
+
+            drawnItems.addLayer(
+                layer
+            );
+
+            const coordinates =
+                layer
+                    .toGeoJSON()
+                    .geometry
+                    .coordinates[0];
+
+            analyzePolygon(
+                coordinates
+            );
+        }
+    );
+
+
+    map.on(
+        L.Draw.Event.EDITED,
+        function(event) {
+
+            suitableLayerGroup.clearLayers();
+
+            event.layers.eachLayer(
+                function(layer) {
+
+                    const coordinates =
+                        layer
+                            .toGeoJSON()
+                            .geometry
+                            .coordinates[0];
+
+                    analyzePolygon(
+                        coordinates
+                    );
+                }
+            );
+        }
+    );
+
+
+    map.on(
+        L.Draw.Event.DELETED,
+        function() {
+
+            suitableLayerGroup.clearLayers();
+
+            document.getElementById(
+                'stats-container'
+            ).style.display = 'none';
+
+            const statusMsg =
+                document.getElementById(
+                    'status-msg'
+                );
+
+            statusMsg.style.display =
+                'flex';
+
+            statusMsg.style.background =
+                'rgba(255,155,115,.075)';
+
+            statusMsg.style.borderColor =
+                'rgba(255,155,115,.28)';
+
+            statusMsg.style.color =
+                '#ffad8c';
+
+            statusMsg.innerText =
+                'Desenează o parcelă pentru a începe analiza.';
+        }
+    );
+</script>
+
+</body>
+</html>
